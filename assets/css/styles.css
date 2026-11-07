@@ -2857,6 +2857,34 @@ legend.step-title {
   font-style: italic;
 }
 
+.submit-status {
+  margin: 0 0 14px;
+  padding: 11px 14px;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--gold);
+  background: rgba(200, 162, 103, 0.06);
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--ivory-72);
+}
+
+.submit-status--pending {
+  border-left-color: var(--gold);
+  color: var(--ivory-72);
+}
+
+.submit-status--ok {
+  border-left-color: var(--sage);
+  background: rgba(127, 154, 107, 0.1);
+  color: var(--ivory-72);
+}
+
+.submit-status--warn {
+  border-left-color: var(--vermilion);
+  background: rgba(224, 90, 66, 0.08);
+  color: var(--ivory-72);
+}
+
 .summary__head {
   display: flex;
   align-items: baseline;

@@ -738,6 +738,7 @@
 
   var activeOrder = null;
   var pendingRef = null;
+  var pendingToken = null;
   var checkoutEntry = null;
 
   function newReference() {
@@ -747,17 +748,28 @@
     return CFG.order.prefix + "-" + stamp + "-" + suffix;
   }
 
+  function newClientToken() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+      return window.crypto.randomUUID();
+    }
+    return "t-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 12);
+  }
+
   function buildOrder() {
     var details = collectDetails();
     var t = totalsFor(details.service, subtotal());
+    if (!pendingToken) pendingToken = newClientToken();
     return {
       ref: pendingRef || newReference(),
+      clientToken: pendingToken,
       placedAt: new Date().toISOString(),
       details: details,
       serviceDetail: serviceDetail(details),
       readyBy: readyBy(details),
       lines: lines().map(function (line) {
         return {
+          id: line.item.id,
+          categoryId: line.item.categoryId,
           name: line.item.name,
           qty: line.qty,
           price: line.item.price,
@@ -907,6 +919,7 @@
       return;
     }
     pendingRef = newReference();
+    pendingToken = newClientToken();
     activeOrder = null;
     goStep(1);
     renderSummary();
@@ -1007,6 +1020,148 @@
 
     goStep(3);
     showToast("Order prepared — send it on WhatsApp", "i-whatsapp");
+    submitOrder(order);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* kitchen submission (the WhatsApp handoff stays the fallback)        */
+  /* ------------------------------------------------------------------ */
+
+  var OUTBOX_KEY = "miso-outbox-v1";
+  var outboxFlushing = false;
+
+  function submitStatus(kind, message) {
+    var el = $("#submitStatus");
+    if (!el) return;
+    el.hidden = false;
+    el.className = "submit-status submit-status--" + kind;
+    el.textContent = message;
+  }
+
+  function postOrder(payload) {
+    var controller = window.AbortController ? new AbortController() : null;
+    var timer = controller
+      ? setTimeout(function () { controller.abort(); }, 6000)
+      : null;
+
+    return fetch("/api/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-MISO-CSRF": "1" },
+      credentials: "same-origin",
+      body: JSON.stringify(payload),
+      keepalive: true,
+      signal: controller ? controller.signal : undefined
+    }).then(function (response) {
+      if (timer) clearTimeout(timer);
+      return response.json().catch(function () { return {}; }).then(function (data) {
+        return { status: response.status, data: data };
+      });
+    }, function (err) {
+      if (timer) clearTimeout(timer);
+      throw err;
+    });
+  }
+
+  function readOutbox() {
+    try {
+      var raw = window.localStorage.getItem(OUTBOX_KEY);
+      var list = raw ? JSON.parse(raw) : [];
+      return Array.isArray(list) ? list : [];
+    } catch (err) {
+      return [];
+    }
+  }
+
+  function writeOutbox(list) {
+    try {
+      window.localStorage.setItem(OUTBOX_KEY, JSON.stringify(list.slice(-5)));
+    } catch (err) {
+      /* storage may be full or blocked */
+    }
+  }
+
+  function queueOrder(payload) {
+    var list = readOutbox().filter(function (entry) {
+      return entry && entry.payload && entry.payload.clientToken !== payload.clientToken;
+    });
+    list.push({ payload: payload, queuedAt: new Date().toISOString() });
+    writeOutbox(list);
+  }
+
+  function dropOutbox(token) {
+    writeOutbox(readOutbox().filter(function (entry) {
+      return entry && entry.payload && entry.payload.clientToken !== token;
+    }));
+  }
+
+  function submitOrder(order) {
+    var payload = {
+      ref: order.ref,
+      clientToken: order.clientToken,
+      service: order.details.service,
+      details: order.details,
+      lines: order.lines.map(function (line) {
+        return { id: line.id, qty: line.qty, note: line.note };
+      }),
+      clientTotal: order.dueNow
+    };
+
+    submitStatus("pending", "Sending your order to the kitchen…");
+    postOrder(payload).then(function (result) {
+      var data = result.data || {};
+      if (result.status === 200 || result.status === 201) {
+        dropOutbox(payload.clientToken);
+        submitStatus("ok", "Kitchen notified — your order is on their screen. Keep this WhatsApp message for your receipt.");
+        return;
+      }
+      if (result.status === 409 && data.error === "menu_changed") {
+        submitStatus("warn", "A dish changed while you were ordering. Send this order on WhatsApp and the team will confirm it.");
+        return;
+      }
+      if (result.status === 429) {
+        submitStatus("warn", "Too many orders from this device just now. Send this one on WhatsApp.");
+        return;
+      }
+      if (result.status >= 400 && result.status < 500) {
+        submitStatus("warn", "The kitchen could not take this order automatically — send it on WhatsApp.");
+        return;
+      }
+      throw new Error("order_submit_failed");
+    }).catch(function () {
+      queueOrder(payload);
+      submitStatus("warn", "Couldn't reach the kitchen — send this order on WhatsApp. We'll retry automatically.");
+    });
+  }
+
+  function flushOutbox() {
+    if (outboxFlushing) return;
+    var pending = readOutbox();
+    if (!pending.length) return;
+    if (navigator.onLine === false) return;
+
+    outboxFlushing = true;
+    (function next() {
+      if (!pending.length) {
+        outboxFlushing = false;
+        return;
+      }
+      var entry = pending.shift();
+      var payload = entry && entry.payload;
+      if (!payload || !payload.clientToken) {
+        next();
+        return;
+      }
+      postOrder(payload).then(function (result) {
+        if ((result.status >= 200 && result.status < 300) || result.status === 409) {
+          dropOutbox(payload.clientToken);
+          next();
+        } else {
+          outboxFlushing = false;
+        }
+      }).catch(function () {
+        outboxFlushing = false;
+      });
+    })();
   }
 
   function closeCheckout(resetForm) {
@@ -1017,6 +1172,7 @@
     if (resetForm) {
       activeOrder = null;
       pendingRef = null;
+      pendingToken = null;
     }
   }
 
@@ -1547,6 +1703,8 @@
     setServicePanels(currentService());
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", debounce(onScroll, 150));
+    window.addEventListener("online", flushOutbox);
+    flushOutbox();
     initWebApp();
     initInstallButton();
   }

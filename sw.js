@@ -1,7 +1,7 @@
 /* MISO service worker — keeps the menu shell available offline and refreshes
    it in the background. Bump VERSION to retire old caches after a redesign. */
 
-var VERSION = "miso-v1";
+var VERSION = "miso-v2";
 var SHELL_CACHE = "miso-shell-" + VERSION;
 var MEDIA_CACHE = "miso-media-" + VERSION;
 
@@ -78,6 +78,12 @@ self.addEventListener("fetch", function (event) {
   // Google Fonts and other third parties stay on the browser's own networking.
   if (url.origin !== self.location.origin) return;
 
+  // The live API and the staff console must never touch the guest caches.
+  if (url.pathname === "/api" || url.pathname.indexOf("/api/") === 0 ||
+      url.pathname === "/staff" || url.pathname.indexOf("/staff/") === 0) {
+    return;
+  }
+
   if (request.mode === "navigate") {
     event.respondWith(handleNavigation(request));
     return;
@@ -94,9 +100,11 @@ self.addEventListener("fetch", function (event) {
 /* Pages: always try the network so menu and price changes land immediately;
    fall back to the cached shell when the connection drops. */
 function handleNavigation(request) {
+  var pathname = new URL(request.url).pathname;
+  var isShell = pathname === "/" || pathname === "/index.html";
   return caches.open(SHELL_CACHE).then(function (cache) {
     return fetch(request).then(function (response) {
-      if (response && response.ok) cache.put("/index.html", response.clone());
+      if (response && response.ok && isShell) cache.put("/index.html", response.clone());
       return response;
     }).catch(function () {
       return cache.match("/index.html").then(function (hit) {

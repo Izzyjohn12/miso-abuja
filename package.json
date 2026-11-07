@@ -6,7 +6,7 @@
   "description": "MISO Japanese & Thai Restaurant — guest storefront, order alerts and staff menu console",
   "scripts": {
     "build": "python _work/build_dist.py",
-    "dev": "wrangler pages dev dist",
+    "dev": "wrangler pages dev dist --env-file .dev.vars",
     "db:local": "wrangler d1 migrations apply miso-db --local",
     "db:remote": "wrangler d1 migrations apply miso-db --remote",
     "test:api": "node _work/test_api.mjs"

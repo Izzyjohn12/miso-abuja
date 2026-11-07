@@ -17,6 +17,11 @@ vibe_images/
 # paused Expo shell (kept on disk, tracked separately)
 mobile/
 
+# secrets for local Functions development
+.dev.vars
+.dev.vars.*
+_work/staff-passcode.txt
+
 # OS and editor noise
 .DS_Store
 Thumbs.db

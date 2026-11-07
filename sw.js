@@ -137,6 +137,57 @@ function networkFirst(request) {
   });
 }
 
+/* ---------------------------------------------------------------- push -- */
+
+/* Staff alerts keep working when the console is closed. The payload is built
+   by functions/_lib/push.js; a missing payload still produces a safe notice. */
+self.addEventListener("push", function (event) {
+  var data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (error) {
+    data = {};
+  }
+
+  var options = {
+    body: data.body || "Open the staff console to see the order.",
+    icon: "/assets/img/app/icon-192.png",
+    badge: "/assets/img/app/icon-192.png",
+    tag: data.tag || "miso-order",
+    renotify: true,
+    requireInteraction: Boolean(data.requireInteraction),
+    data: { url: data.url || "/staff/#orders" },
+    vibrate: [90, 60, 90]
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(data.title || "New MISO order", options)
+  );
+});
+
+self.addEventListener("notificationclick", function (event) {
+  event.notification.close();
+
+  var target = (event.notification.data && event.notification.data.url) || "/staff/#orders";
+  var url = new URL(target, self.location.origin).href;
+
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (list) {
+      for (var i = 0; i < list.length; i += 1) {
+        var client = list[i];
+        var clientUrl = new URL(client.url);
+        if (clientUrl.origin === self.location.origin &&
+            (clientUrl.pathname === "/staff" || clientUrl.pathname.indexOf("/staff/") === 0)) {
+          return client.focus().then(function () {
+            return client.navigate ? client.navigate(url) : null;
+          });
+        }
+      }
+      return self.clients.openWindow(url);
+    })
+  );
+});
+
 /* Photography and icons: serve instantly, refresh quietly in the background. */
 function staleWhileRevalidate(event, request) {
   return caches.open(MEDIA_CACHE).then(function (cache) {

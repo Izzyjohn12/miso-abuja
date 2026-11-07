@@ -160,6 +160,10 @@ export async function deleteSession(env, sessionId) {
   await env.DB.prepare("DELETE FROM sessions WHERE id = ?").bind(sessionId).run();
 }
 
+export async function deleteAllSessions(env) {
+  await env.DB.prepare("DELETE FROM sessions").run();
+}
+
 export async function recentLoginFailures(env, ip) {
   const since = new Date(Date.now() - LOGIN_WINDOW_MS).toISOString();
   const row = await env.DB.prepare(

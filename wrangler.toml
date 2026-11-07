@@ -10,3 +10,5 @@ migrations_dir = "migrations"
 
 [vars]
 MENU_CACHE_SECONDS = "30"
+VAPID_PUBLIC_KEY = "BIvw30coWclU3VRSrfqadRxqFHi06f-ETkhLktnJNftyXlUxaja5oaIW1MgE6wLJU7dHmpPoQW3feB1YurEXH70"
+VAPID_SUBJECT = "https://miso-abuja.pages.dev"

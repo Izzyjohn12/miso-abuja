@@ -5,7 +5,9 @@
 import { clientIp, fail, hasCsrf, json, nowIso, readJson, sameOrigin } from "../../_lib/http.js";
 import { requireStaff } from "../../_lib/auth.js";
 import {
+  SERVICE_NAMES,
   checkOrderRate,
+  formatServiceDetail,
   listOrders,
   loadOrderItems,
   parseOrderBody,
@@ -13,6 +15,16 @@ import {
   serializeOrder,
   totalsFor
 } from "../../_lib/orders.js";
+import { notifyStaff } from "../../_lib/push.js";
+
+/* Alerts run after the guest response. A rejected push never fails the order. */
+function queueAlert(context, env, order) {
+  const task = notifyStaff(env, order).catch((err) => {
+    console.error("order_alert_failed", err);
+  });
+  if (context && typeof context.waitUntil === "function") context.waitUntil(task);
+  return task;
+}
 
 function duplicateResponse(env, row) {
   return loadOrderItems(env, [row.id]).then((items) =>
@@ -124,6 +136,16 @@ export async function onRequestPost(context) {
     console.error("order_insert_failed", err);
     return fail(500, "server_error");
   }
+
+  queueAlert(context, env, {
+    id: orderId,
+    ref,
+    service,
+    serviceLabel: SERVICE_NAMES[service] || service,
+    serviceDetail: formatServiceDetail(details),
+    itemCount: priced.items.reduce((sum, item) => sum + item.qty, 0),
+    total: totals.total
+  });
 
   return json(
     {

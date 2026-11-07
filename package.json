@@ -9,7 +9,9 @@
     "dev": "wrangler pages dev dist --env-file .dev.vars",
     "db:local": "wrangler d1 migrations apply miso-db --local",
     "db:remote": "wrangler d1 migrations apply miso-db --remote",
-    "test:api": "node _work/test_api.mjs"
+    "test:api": "node _work/test_api.mjs",
+    "test:phase3": "node _work/test_phase3_api.mjs",
+    "test:push": "node _work/test_push.mjs"
   },
   "dependencies": {
     "@block65/webcrypto-web-push": "^2.0.0"

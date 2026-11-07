@@ -242,6 +242,8 @@ export function serializeOrder(row, items) {
     total: row.total,
     dueNow: row.due_now,
     itemCount: (items || []).reduce((sum, item) => sum + item.qty, 0),
+    notifiedAt: row.notified_at || null,
+    notifyError: row.notify_error || null,
     items: (items || []).map((item) => ({
       id: item.item_id,
       name: item.name,

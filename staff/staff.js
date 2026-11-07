@@ -1,4 +1,5 @@
-/* MISO staff console — passcode login, live order queue and status actions. */
+/* MISO staff console — passcode login, live order queue, menu editor and
+ * Web Push alerts. Plain IIFE: no build step, ES5 syntax. */
 
 (function () {
   "use strict";
@@ -6,6 +7,12 @@
   var POLL_MS = 15000;
   var SEEN_KEY = "miso-staff-seen-v1";
   var SOUND_KEY = "miso-staff-sound-v1";
+  var TABS = ["orders", "menu", "alerts"];
+  var TAB_TITLE = {
+    orders: "Order queue",
+    menu: "Menu editor",
+    alerts: "Alerts"
+  };
 
   var STATUS_LABEL = {
     new: "New",
@@ -18,6 +25,11 @@
     unpaid: "Unpaid",
     paid: "Paid",
     pay_later: "Pay later"
+  };
+  var TAG_LABEL = {
+    spicy: "Spicy",
+    veg: "Vegetarian",
+    shellfish: "Shellfish"
   };
   var ACTIVE = ["new", "preparing", "ready"];
 
@@ -39,7 +51,14 @@
     sound: window.localStorage.getItem(SOUND_KEY) !== "off",
     poll: null,
     loading: false,
-    audio: null
+    audio: null,
+    tab: "orders",
+    menu: null,
+    menuLoading: false,
+    editingId: null,
+    alerts: null,
+    swPromise: null,
+    installPrompt: null
   };
 
   function $(selector, root) {
@@ -116,6 +135,7 @@
 
   function showLogin(message) {
     stopPolling();
+    closeDishSheet();
     $("#appView").hidden = true;
     $("#loginView").hidden = false;
     updateBadge(0);
@@ -131,6 +151,8 @@
     $("#appView").hidden = false;
     state.primed = false;
     unlockAudio();
+    registerServiceWorker();
+    setTab(readTab(), false);
     loadOrders(true).then(startPolling);
   }
 
@@ -194,6 +216,7 @@
         .then(function () {
           button.disabled = false;
           state.orders = [];
+          state.menu = null;
           state.primed = false;
           showLogin();
         });
@@ -207,6 +230,63 @@
       .catch(function () {
         showLogin("Couldn't reach the server. Check the connection and try again.");
       });
+  }
+
+  /* ------------------------------------------------------- navigation -- */
+
+  function readTab() {
+    var hash = String(window.location.hash || "").replace("#", "").split("?")[0];
+    return TABS.indexOf(hash) === -1 ? "orders" : hash;
+  }
+
+  function setTab(tab, writeHash) {
+    if (TABS.indexOf(tab) === -1) tab = "orders";
+    state.tab = tab;
+
+    TABS.forEach(function (name) {
+      var view = $("#view" + name.charAt(0).toUpperCase() + name.slice(1));
+      if (view) view.hidden = name !== tab;
+    });
+
+    $$(".tab").forEach(function (button) {
+      var isActive = button.getAttribute("data-tab") === tab;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-selected", String(isActive));
+    });
+
+    $("#topbarTitle").textContent = TAB_TITLE[tab];
+    document.title = "MISO Staff \u2014 " + TAB_TITLE[tab];
+    $("#refreshButton").title = "Refresh " + TAB_TITLE[tab].toLowerCase();
+    $("#refreshButton").setAttribute("aria-label", "Refresh " + TAB_TITLE[tab].toLowerCase());
+
+    if (writeHash !== false) {
+      try {
+        window.history.replaceState(null, "", "#" + tab);
+      } catch (err) {
+        /* ignore */
+      }
+    }
+
+    if (tab === "menu") loadMenu(false);
+    if (tab === "alerts") refreshAlerts(false);
+  }
+
+  function initNav() {
+    $$(".tab").forEach(function (button) {
+      button.addEventListener("click", function () {
+        setTab(button.getAttribute("data-tab"), true);
+      });
+    });
+
+    window.addEventListener("hashchange", function () {
+      if (!$("#appView").hidden) setTab(readTab(), false);
+    });
+
+    $("#refreshButton").addEventListener("click", function () {
+      if (state.tab === "menu") loadMenu(true);
+      else if (state.tab === "alerts") refreshAlerts(true);
+      else loadOrders(false);
+    });
   }
 
   /* ----------------------------------------------------------- queue -- */
@@ -264,6 +344,13 @@
     setLive(true);
     $("#updatedAt").textContent = "Updated " + TIME.format(new Date());
     updateBadge(newOrders.length);
+    updateTabCount(newOrders.length);
+  }
+
+  function updateTabCount(count) {
+    var badge = $("#ordersTabCount");
+    badge.hidden = count === 0;
+    badge.textContent = String(count);
   }
 
   function filteredOrders() {
@@ -323,6 +410,25 @@
       $("#emptyTitle").textContent = "No active orders";
       $("#emptyText").textContent = "New orders from the website will appear here automatically.";
     }
+  }
+
+  function alertNote(order) {
+    if (order.notifiedAt || !order.notifyError) return "";
+
+    var message;
+    var action = "";
+    if (order.notifyError === "push_not_configured") {
+      message = "Push alerts are not configured on the server.";
+    } else if (order.notifyError === "no_subscribers") {
+      message = "No phone is subscribed to alerts yet.";
+      action = '<button class="dish-btn" type="button" data-act="open-alerts">Set up alerts</button>';
+    } else {
+      message = "The alert did not reach a phone.";
+      action = '<button class="dish-btn" type="button" data-act="alert" data-id="' +
+        escapeHtml(order.id) + '">Retry alert</button>';
+    }
+
+    return '<p class="order__alert"><span>' + escapeHtml(message) + "</span>" + action + "</p>";
   }
 
   function orderCard(order) {
@@ -410,6 +516,7 @@
           ? '<p class="order__note">' + escapeHtml(order.notes) + "</p>"
           : "") +
         totals +
+        alertNote(order) +
         (actions.length ? '<div class="order__actions">' + actions.join("") + "</div>" : "") +
       "</article>"
     );
@@ -454,6 +561,34 @@
       });
   }
 
+  function retryAlert(id) {
+    request("/api/orders/" + encodeURIComponent(id), {
+      method: "PATCH",
+      body: { retryAlert: true }
+    })
+      .then(function (result) {
+        if (result.status === 401) {
+          showLogin("Your session ended. Sign in again.");
+          return;
+        }
+        if (!result.ok) {
+          toast("Couldn't send the alert. Try again.", true);
+          loadOrders(true);
+          return;
+        }
+        var sent = Number(result.data.alert && result.data.alert.sent) || 0;
+        if (sent) {
+          toast(sent === 1 ? "Alert sent to 1 phone" : "Alert sent to " + sent + " phones");
+        } else {
+          toast("No phone received the alert. Check the Alerts tab.", true);
+        }
+        loadOrders(true);
+      })
+      .catch(function () {
+        toast("Couldn't reach the server.", true);
+      });
+  }
+
   function initQueue() {
     $("#orders").addEventListener("click", function (event) {
       var button = event.target.closest("[data-act]");
@@ -461,6 +596,17 @@
 
       var id = button.getAttribute("data-id");
       var action = button.getAttribute("data-act");
+
+      if (action === "open-alerts") {
+        setTab("alerts", true);
+        return;
+      }
+
+      if (action === "alert") {
+        button.disabled = true;
+        retryAlert(id);
+        return;
+      }
 
       if (action === "paid") {
         button.disabled = true;
@@ -488,10 +634,6 @@
         state.filter = button.getAttribute("data-filter");
         render();
       });
-    });
-
-    $("#refreshButton").addEventListener("click", function () {
-      loadOrders(false);
     });
 
     $("#soundButton").addEventListener("click", function () {
@@ -550,6 +692,754 @@
     } catch (err) {
       /* not supported */
     }
+  }
+
+  /* ------------------------------------------------------------ menu -- */
+
+  function loadMenu(force) {
+    if (state.menuLoading) return Promise.resolve();
+    if (state.menu && !force) return Promise.resolve();
+
+    state.menuLoading = true;
+    $("#menuError").hidden = true;
+    if (!state.menu) $("#menuTotal").textContent = "Loading menu\u2026";
+
+    return request("/api/menu/items")
+      .then(function (result) {
+        state.menuLoading = false;
+        if (result.status === 401) {
+          showLogin("Your session ended. Sign in again.");
+          return;
+        }
+        if (!result.ok) {
+          $("#menuError").hidden = false;
+          $("#menuError").textContent = "Couldn't load the menu. Check the connection and try again.";
+          return;
+        }
+        state.menu = result.data;
+        buildGroupOptions();
+        renderMenu();
+      })
+      .catch(function () {
+        state.menuLoading = false;
+        $("#menuError").hidden = false;
+        $("#menuError").textContent = "Couldn't reach the server.";
+      });
+  }
+
+  function buildGroupOptions() {
+    var select = $("#dishGroup");
+    if (!select || !state.menu) return;
+
+    var html = "";
+    (state.menu.categories || []).forEach(function (category) {
+      var groups = (category.groups || []).filter(function (group) {
+        return (group.items || []).length > 0;
+      });
+      if (!groups.length) return;
+      html += '<optgroup label="' + escapeHtml(category.name) + '">';
+      groups.forEach(function (group) {
+        html += '<option value="' + escapeHtml(group.id) + '">' +
+          escapeHtml(group.name) + "</option>";
+      });
+      html += "</optgroup>";
+    });
+
+    select.innerHTML = html;
+  }
+
+  function findMenuItem(id) {
+    if (!state.menu) return null;
+    var found = null;
+    (state.menu.categories || []).forEach(function (category) {
+      (category.groups || []).forEach(function (group) {
+        (group.items || []).forEach(function (item) {
+          if (item.id === id) found = item;
+        });
+      });
+    });
+    return found;
+  }
+
+  function renderMenu() {
+    if (!state.menu) return;
+
+    var query = $("#menuSearch").value.trim().toLowerCase();
+    var shown = 0;
+    var hiddenShown = 0;
+    var categoriesHtml = "";
+
+    (state.menu.categories || []).forEach(function (category) {
+      var groupsHtml = "";
+      var categoryCount = 0;
+      var categoryHidden = 0;
+
+      (category.groups || []).forEach(function (group) {
+        var items = (group.items || []).filter(function (item) {
+          if (!query) return true;
+          var haystack = [
+            item.name,
+            item.description || "",
+            category.name,
+            group.name,
+            (item.tags || []).join(" ")
+          ].join(" ").toLowerCase();
+          return haystack.indexOf(query) !== -1;
+        });
+
+        if (!items.length) return;
+
+        categoryCount += items.length;
+        categoryHidden += items.filter(function (item) { return item.hidden; }).length;
+
+        groupsHtml +=
+          '<section class="menu-group">' +
+            "<h4>" + escapeHtml(group.name) + "</h4>" +
+            '<ul class="dish-list">' + items.map(dishRow).join("") + "</ul>" +
+          "</section>";
+      });
+
+      if (!groupsHtml) return;
+      shown += categoryCount;
+      hiddenShown += categoryHidden;
+
+      var meta = categoryCount + (categoryCount === 1 ? " dish" : " dishes");
+      if (categoryHidden) meta += " \u00b7 " + categoryHidden + " hidden";
+
+      categoriesHtml +=
+        '<details class="menu-cat" open>' +
+          '<summary class="menu-cat__head">' +
+            '<span class="menu-cat__name">' + escapeHtml(category.name) + "</span>" +
+            '<span class="menu-cat__meta">' + escapeHtml(meta) + "</span>" +
+            '<svg class="menu-cat__chevron" viewBox="0 0 24 24" aria-hidden="true">' +
+              '<path d="M12 15.4 5.6 9 4.2 10.4 12 18.2l7.8-7.8L18.4 9z"/></svg>' +
+          "</summary>" +
+          '<div class="menu-cat__body">' + groupsHtml + "</div>" +
+        "</details>";
+    });
+
+    $("#menuList").innerHTML = categoriesHtml;
+    $("#menuEmpty").hidden = shown > 0;
+
+    if (query) {
+      $("#menuTotal").textContent = shown + (shown === 1 ? " match" : " matches");
+    } else {
+      var total = Number(state.menu.itemCount) || 0;
+      var hidden = Number(state.menu.hiddenCount) || 0;
+      $("#menuTotal").textContent = total + (total === 1 ? " dish" : " dishes") +
+        (hidden ? " \u00b7 " + hidden + " hidden" : "");
+    }
+  }
+
+  function dishRow(item) {
+    var tags = (item.tags || []).map(function (tag) {
+      return TAG_LABEL[tag] || tag;
+    }).join(", ");
+
+    var meta = item.price === null ? "Price on request" : money(item.price);
+    if (tags) meta += " \u00b7 " + tags;
+
+    return (
+      '<li class="dish-row' + (item.hidden ? " is-hidden" : "") + '">' +
+        '<div class="dish-row__main">' +
+          '<p class="dish-row__name">' + escapeHtml(item.name) +
+            (item.hidden ? '<span class="chip chip--hidden">Hidden</span>' : "") +
+          "</p>" +
+          '<p class="dish-row__meta">' + escapeHtml(meta) + "</p>" +
+          (item.description
+            ? '<p class="dish-row__desc">' + escapeHtml(item.description) + "</p>"
+            : "") +
+        "</div>" +
+        '<div class="dish-row__actions">' +
+          '<button class="dish-btn" type="button" data-menu-act="edit" data-id="' +
+            escapeHtml(item.id) + '">Edit</button>' +
+          '<button class="dish-btn' + (item.hidden ? " dish-btn--show" : "") +
+            '" type="button" data-menu-act="' + (item.hidden ? "show" : "hide") +
+            '" data-id="' + escapeHtml(item.id) + '">' +
+            (item.hidden ? "Show" : "Hide") +
+          "</button>" +
+        "</div>" +
+      "</li>"
+    );
+  }
+
+  function setDishHidden(id, hidden) {
+    request("/api/menu/items/" + encodeURIComponent(id), {
+      method: "PATCH",
+      body: { hidden: hidden }
+    })
+      .then(function (result) {
+        if (result.status === 401) {
+          showLogin("Your session ended. Sign in again.");
+          return;
+        }
+        if (!result.ok) {
+          toast("Couldn't update that dish. Try again.", true);
+          loadMenu(true);
+          return;
+        }
+        toast(hidden ? "Dish hidden from the guest menu" : "Dish is back on the guest menu");
+        loadMenu(true);
+      })
+      .catch(function () {
+        toast("Couldn't reach the server.", true);
+      });
+  }
+
+  function initMenu() {
+    $("#menuSearch").addEventListener("input", renderMenu);
+
+    $("#menuList").addEventListener("click", function (event) {
+      var button = event.target.closest("[data-menu-act]");
+      if (!button || button.disabled) return;
+
+      var id = button.getAttribute("data-id");
+      var action = button.getAttribute("data-menu-act");
+      var item = findMenuItem(id);
+      if (!item) return;
+
+      if (action === "edit") {
+        openDishSheet(item);
+        return;
+      }
+
+      var hiding = action === "hide";
+      if (hiding && !window.confirm(
+        "Hide \u201c" + item.name + "\u201d from the guest menu? Past orders keep it."
+      )) {
+        return;
+      }
+
+      button.disabled = true;
+      setDishHidden(id, hiding);
+    });
+
+    $("#addDishButton").addEventListener("click", function () {
+      if (!state.menu) {
+        loadMenu(true).then(function () { openDishSheet(null); });
+        return;
+      }
+      openDishSheet(null);
+    });
+
+    $$("[data-close-sheet]").forEach(function (button) {
+      button.addEventListener("click", closeDishSheet);
+    });
+
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape" && !$("#dishSheet").hidden) closeDishSheet();
+    });
+
+    $("#dishRequest").addEventListener("change", function () {
+      $("#dishPrice").disabled = this.checked;
+      if (this.checked) $("#dishPrice").value = "";
+    });
+
+    $("#dishForm").addEventListener("submit", saveDish);
+  }
+
+  function dishError(message) {
+    var el = $("#dishError");
+    el.hidden = false;
+    el.textContent = message;
+    el.scrollIntoView({ block: "nearest" });
+  }
+
+  function clearDishError() {
+    $("#dishError").hidden = true;
+    $("#dishError").textContent = "";
+  }
+
+  function openDishSheet(item) {
+    if (!state.menu) return;
+
+    state.editingId = item ? item.id : null;
+
+    $("#dishSheetKicker").textContent = item ? "Edit dish" : "New dish";
+    $("#dishSheetTitle").textContent = item ? item.name : "Add a dish";
+    $("#dishId").value = item ? item.id : "";
+    $("#dishName").value = item ? item.name : "";
+
+    var firstOption = $("#dishGroup").querySelector("option");
+    $("#dishGroup").value = item ? item.groupId : (firstOption ? firstOption.value : "");
+
+    var onRequest = item ? item.price === null : false;
+    $("#dishRequest").checked = onRequest;
+    $("#dishPrice").value = item && item.price !== null ? String(item.price) : "";
+    $("#dishPrice").disabled = onRequest;
+
+    $("#dishDescription").value = item ? item.description || "" : "";
+
+    $$('input[name="dishTag"]').forEach(function (box) {
+      box.checked = Boolean(item && (item.tags || []).indexOf(box.value) !== -1);
+    });
+
+    clearDishError();
+    $("#dishSheet").hidden = false;
+    document.body.classList.add("has-sheet");
+    window.setTimeout(function () { $("#dishName").focus(); }, 80);
+  }
+
+  function closeDishSheet() {
+    var sheet = $("#dishSheet");
+    if (!sheet || sheet.hidden) return;
+    sheet.hidden = true;
+    state.editingId = null;
+    document.body.classList.remove("has-sheet");
+  }
+
+  function menuErrorMessage(error) {
+    switch (error) {
+      case "name_required":
+        return "Give the dish a name.";
+      case "bad_group":
+        return "That category group is no longer available. Refresh the menu and try again.";
+      case "bad_price":
+        return "Enter a whole naira price up to \u20a610,000,000.";
+      case "bad_tags":
+        return "One of those tags is not recognised.";
+      case "not_found":
+        return "That dish no longer exists. Refresh the menu.";
+      case "nothing_to_update":
+        return "Change something before saving.";
+      default:
+        return "Couldn't save the dish. Check the details and try again.";
+    }
+  }
+
+  function saveDish(event) {
+    event.preventDefault();
+    clearDishError();
+
+    var name = $("#dishName").value.trim();
+    var groupId = $("#dishGroup").value;
+    var onRequest = $("#dishRequest").checked;
+    var priceRaw = $("#dishPrice").value.trim();
+    var price = null;
+
+    if (name.length < 2) {
+      dishError("Give the dish a name.");
+      return;
+    }
+    if (!groupId) {
+      dishError("Choose a category and group.");
+      return;
+    }
+    if (!onRequest) {
+      if (!priceRaw) {
+        dishError("Enter a price, or tick Price on request.");
+        return;
+      }
+      price = Number(priceRaw);
+      if (!Number.isInteger(price) || price < 0 || price > 10000000) {
+        dishError("Enter a whole naira price up to \u20a610,000,000.");
+        return;
+      }
+    }
+
+    var tags = $$('input[name="dishTag"]:checked').map(function (box) {
+      return box.value;
+    });
+
+    var payload = {
+      name: name,
+      groupId: groupId,
+      description: $("#dishDescription").value.trim(),
+      priceOnRequest: onRequest,
+      tags: tags
+    };
+    if (!onRequest) payload.price = price;
+
+    var editing = state.editingId;
+    var path = editing
+      ? "/api/menu/items/" + encodeURIComponent(editing)
+      : "/api/menu/items";
+    var button = $("#dishSave");
+    button.disabled = true;
+    button.textContent = "Saving\u2026";
+
+    request(path, { method: editing ? "PATCH" : "POST", body: payload })
+      .then(function (result) {
+        button.disabled = false;
+        button.textContent = "Save dish";
+
+        if (result.status === 401) {
+          closeDishSheet();
+          showLogin("Your session ended. Sign in again.");
+          return;
+        }
+        if (!result.ok) {
+          dishError(menuErrorMessage(result.data && result.data.error));
+          return;
+        }
+
+        closeDishSheet();
+        toast(editing ? "Dish updated" : "Dish added to the menu");
+        loadMenu(true);
+      })
+      .catch(function () {
+        button.disabled = false;
+        button.textContent = "Save dish";
+        dishError("Couldn't reach the server. Try again.");
+      });
+  }
+
+  /* ----------------------------------------------------------- alerts -- */
+
+  function registerServiceWorker() {
+    if (!("serviceWorker" in navigator)) return Promise.resolve(null);
+    if (state.swPromise) return state.swPromise;
+    state.swPromise = navigator.serviceWorker.register("/sw.js")
+      .catch(function () { return null; });
+    return state.swPromise;
+  }
+
+  function pushRegistration() {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      return Promise.resolve(null);
+    }
+    return registerServiceWorker().then(function (registration) {
+      return registration || navigator.serviceWorker.ready;
+    }).catch(function () {
+      return null;
+    });
+  }
+
+  function localPushState() {
+    var supported = "serviceWorker" in navigator &&
+      "PushManager" in window &&
+      "Notification" in window;
+
+    if (!supported) {
+      return Promise.resolve({ supported: false, subscribed: false, permission: "unsupported" });
+    }
+
+    return pushRegistration().then(function (registration) {
+      if (!registration) {
+        return { supported: true, subscribed: false, permission: Notification.permission, ready: false };
+      }
+      return registration.pushManager.getSubscription().then(function (subscription) {
+        return {
+          supported: true,
+          subscribed: Boolean(subscription),
+          permission: Notification.permission,
+          ready: true
+        };
+      });
+    }).catch(function () {
+      return { supported: true, subscribed: false, permission: Notification.permission, ready: false };
+    });
+  }
+
+  function refreshAlerts(userInitiated) {
+    if ($("#appView").hidden) return Promise.resolve();
+
+    $("#alertDeviceStatus").textContent = "Checking this phone\u2026";
+
+    var configTask = request("/api/alerts/config")
+      .then(function (result) {
+        if (result.status === 401) {
+          showLogin("Your session ended. Sign in again.");
+          return null;
+        }
+        if (!result.ok) return null;
+        state.alerts = result.data;
+        return result.data;
+      })
+      .catch(function () { return null; });
+
+    return Promise.all([configTask, localPushState()]).then(function (values) {
+      renderAlerts(values[0], values[1]);
+      if (userInitiated) {
+        toast(values[0] ? "Alert status refreshed" : "Couldn't read alert settings.", !values[0]);
+      }
+    });
+  }
+
+  function renderAlerts(config, local) {
+    var head = $("#alertDeviceStatus").closest(".alert-card__head");
+    var status;
+    var offline = false;
+
+    if (!local.supported) {
+      status = "Push alerts are not supported in this browser.";
+      offline = true;
+    } else if (local.permission === "denied") {
+      status = "Notifications are blocked for this site. Allow them in browser settings.";
+      offline = true;
+    } else if (local.subscribed && config && config.configured) {
+      status = "Alerts are on for this phone.";
+    } else if (local.subscribed && !config) {
+      status = "This phone is subscribed, but the server status is unavailable.";
+      offline = true;
+    } else if (local.subscribed) {
+      status = "This phone is subscribed, but the server has no push keys.";
+      offline = true;
+    } else {
+      status = "Alerts are off for this phone.";
+      offline = true;
+    }
+
+    $("#alertDeviceStatus").textContent = status;
+    head.classList.toggle("is-off", offline);
+
+    var canEnable = local.supported &&
+      !local.subscribed &&
+      local.permission !== "denied" &&
+      Boolean(config && config.configured);
+
+    $("#enablePushButton").hidden = !canEnable;
+    $("#disablePushButton").hidden = !local.subscribed;
+    $("#testPushButton").hidden = !(local.subscribed && config && config.configured);
+
+    var permissionLabel = {
+      granted: "Allowed",
+      denied: "Blocked",
+      "default": "Not asked yet",
+      unsupported: "Unsupported"
+    }[local.permission] || "Unknown";
+
+    var meta = "Browser permission: " + permissionLabel + ".";
+    if (config && !config.configured) {
+      meta = "The server has no push keys yet. Ask the owner to set them.";
+    }
+    $("#alertPermission").textContent = meta;
+
+    $("#alertDeviceCount").textContent = config
+      ? config.deviceCount + (config.deviceCount === 1 ? " phone" : " phones")
+      : "\u2014";
+
+    $("#alertLastDelivery").textContent = config
+      ? (config.lastSuccessAt
+        ? "Last delivery " + orderTime(config.lastSuccessAt)
+        : "No alert delivered yet.")
+      : "Couldn't read delivery status.";
+  }
+
+  function urlBase64ToUint8Array(base64String) {
+    var padding = new Array(((4 - base64String.length % 4) % 4) + 1).join("=");
+    var base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    var raw = window.atob(base64);
+    var bytes = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i);
+    return bytes;
+  }
+
+  function enablePush() {
+    if (!state.alerts || !state.alerts.configured || !state.alerts.publicKey) {
+      toast("Push alerts are not configured on the server.", true);
+      return;
+    }
+
+    var button = $("#enablePushButton");
+    button.disabled = true;
+    button.textContent = "Enabling\u2026";
+
+    window.Notification.requestPermission()
+      .then(function (permission) {
+        if (permission !== "granted") {
+          toast(
+            permission === "denied"
+              ? "Notifications are blocked. Allow them in browser settings."
+              : "Notifications were not allowed.",
+            true
+          );
+          return null;
+        }
+
+        return pushRegistration().then(function (registration) {
+          if (!registration) throw new Error("no_registration");
+          return registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(state.alerts.publicKey)
+          });
+        }).then(function (subscription) {
+          var json = subscription.toJSON();
+          return request("/api/alerts/subscribe", {
+            method: "POST",
+            body: { endpoint: json.endpoint, keys: json.keys }
+          }).then(function (result) {
+            if (result.status === 401) {
+              showLogin("Your session ended. Sign in again.");
+              return;
+            }
+            if (!result.ok) {
+              return subscription.unsubscribe().catch(function () {}).then(function () {
+                throw new Error("subscribe_failed");
+              });
+            }
+            toast("Alerts are on for this phone");
+          });
+        });
+      })
+      .catch(function (err) {
+        toast(
+          err && err.message === "subscribe_failed"
+            ? "Couldn't save this phone. Try again."
+            : "Couldn't turn on alerts on this phone.",
+          true
+        );
+      })
+      .then(function () {
+        button.disabled = false;
+        button.textContent = "Enable alerts";
+        refreshAlerts(false);
+      });
+  }
+
+  function disablePush() {
+    var button = $("#disablePushButton");
+    button.disabled = true;
+
+    pushRegistration()
+      .then(function (registration) {
+        if (!registration) return null;
+        return registration.pushManager.getSubscription();
+      })
+      .then(function (subscription) {
+        if (!subscription) return null;
+        var endpoint = subscription.endpoint;
+        return subscription.unsubscribe().then(function () {
+          return request("/api/alerts/subscribe", {
+            method: "DELETE",
+            body: { endpoint: endpoint }
+          });
+        }).then(function (result) {
+          if (result.status === 401) {
+            showLogin("Your session ended. Sign in again.");
+            return;
+          }
+          toast("Alerts are off for this phone");
+        });
+      })
+      .catch(function () {
+        toast("Couldn't turn off alerts. Try again.", true);
+      })
+      .then(function () {
+        button.disabled = false;
+        refreshAlerts(false);
+      });
+  }
+
+  function sendTestAlert() {
+    var button = $("#testPushButton");
+    button.disabled = true;
+    button.textContent = "Sending\u2026";
+
+    request("/api/alerts/test", { method: "POST" })
+      .then(function (result) {
+        if (result.status === 401) {
+          showLogin("Your session ended. Sign in again.");
+          return;
+        }
+        if (result.status === 503) {
+          toast("Push is not configured on the server.", true);
+          return;
+        }
+        if (!result.ok) {
+          toast("The test alert couldn't be sent.", true);
+          return;
+        }
+        var alert = result.data.result || {};
+        var sent = Number(alert.sent) || 0;
+        if (sent) {
+          toast(sent === 1 ? "Test alert sent to 1 phone" : "Test alert sent to " + sent + " phones");
+        } else if (Number(alert.attempted) === 0) {
+          toast("No phone is subscribed yet. Enable alerts on a phone first.", true);
+        } else {
+          toast("The test alert didn't reach a phone.", true);
+        }
+        refreshAlerts(false);
+      })
+      .catch(function () {
+        toast("Couldn't reach the server.", true);
+      })
+      .then(function () {
+        button.disabled = false;
+        button.textContent = "Send test alert";
+      });
+  }
+
+  function initAlerts() {
+    $("#enablePushButton").addEventListener("click", enablePush);
+    $("#disablePushButton").addEventListener("click", disablePush);
+    $("#testPushButton").addEventListener("click", sendTestAlert);
+    $("#refreshAlertsButton").addEventListener("click", function () {
+      refreshAlerts(true);
+    });
+
+    $("#logoutAllButton").addEventListener("click", function () {
+      if (!window.confirm("Sign out every phone, including this one?")) return;
+      var button = this;
+      button.disabled = true;
+      request("/api/auth/logout", { method: "POST", body: { all: true } })
+        .catch(function () { return null; })
+        .then(function () {
+          button.disabled = false;
+          state.orders = [];
+          state.menu = null;
+          state.primed = false;
+          showLogin("All devices signed out.");
+        });
+    });
+  }
+
+  /* ---------------------------------------------------------- install -- */
+
+  function syncInstallButtons() {
+    var show = Boolean(state.installPrompt);
+    $("#installButtonTop").hidden = !show;
+    $("#installButton").hidden = !show;
+  }
+
+  function initInstall() {
+    window.addEventListener("beforeinstallprompt", function (event) {
+      event.preventDefault();
+      state.installPrompt = event;
+      syncInstallButtons();
+    });
+
+    window.addEventListener("appinstalled", function () {
+      state.installPrompt = null;
+      syncInstallButtons();
+      toast("MISO Staff installed");
+    });
+
+    var install = function () {
+      if (!state.installPrompt) {
+        toast("Use your browser menu to install this page.");
+        return;
+      }
+      var prompt = state.installPrompt;
+      prompt.prompt();
+      prompt.userChoice.then(function (choice) {
+        if (choice && choice.outcome === "accepted") {
+          state.installPrompt = null;
+          toast("Installing MISO Staff\u2026");
+        }
+        syncInstallButtons();
+      }).catch(function () {
+        syncInstallButtons();
+      });
+    };
+
+    $("#installButton").addEventListener("click", install);
+    $("#installButtonTop").addEventListener("click", install);
+
+    var standalone = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
+      window.navigator.standalone === true;
+    var ios = /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+    var hint;
+    if (standalone) {
+      hint = "Running as an installed app. Push alerts work best here.";
+    } else if (ios) {
+      hint = "On iPhone: tap Share, then Add to Home Screen. iOS 16.4+ only sends push to the installed app.";
+    } else {
+      hint = "On Android or desktop Chrome, use the install button or the browser menu.";
+    }
+    $("#installHint").textContent = hint;
   }
 
   /* ------------------------------------------------------------ sound -- */
@@ -618,5 +1508,9 @@
   /* ------------------------------------------------------------- boot -- */
 
   initLogin();
+  initNav();
   initQueue();
+  initMenu();
+  initAlerts();
+  initInstall();
 })();

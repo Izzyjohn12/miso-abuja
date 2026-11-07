@@ -21,6 +21,7 @@ mobile/
 .dev.vars
 .dev.vars.*
 _work/staff-passcode.txt
+_work/vapid.json
 
 # OS and editor noise
 .DS_Store

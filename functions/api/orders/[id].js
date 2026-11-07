@@ -2,6 +2,7 @@
 import { fail, hasCsrf, json, readJson, sameOrigin } from "../../_lib/http.js";
 import { requireStaff } from "../../_lib/auth.js";
 import { findOrder } from "../../_lib/orders.js";
+import { notifyStaff } from "../../_lib/push.js";
 
 const STATUSES = ["new", "preparing", "ready", "completed", "cancelled"];
 const PAYMENTS = ["unpaid", "paid", "pay_later"];
@@ -32,6 +33,7 @@ export async function onRequestPatch(context) {
 
   const updates = {};
   const data = body.data;
+  const retryAlert = data.retryAlert === true;
 
   if (data.status !== undefined) {
     const status = String(data.status);
@@ -51,12 +53,26 @@ export async function onRequestPatch(context) {
   }
 
   const fields = Object.keys(updates);
-  if (!fields.length) return fail(400, "nothing_to_update");
+  if (!fields.length && !retryAlert) return fail(400, "nothing_to_update");
 
-  const assignments = fields.map((field) => field + " = ?").join(", ");
-  await env.DB.prepare("UPDATE orders SET " + assignments + " WHERE id = ?")
-    .bind(...fields.map((field) => updates[field]), id)
-    .run();
+  if (fields.length) {
+    const assignments = fields.map((field) => field + " = ?").join(", ");
+    await env.DB.prepare("UPDATE orders SET " + assignments + " WHERE id = ?")
+      .bind(...fields.map((field) => updates[field]), id)
+      .run();
+  }
 
-  return json({ ok: true, order: await findOrder(env, id) });
+  const order = await findOrder(env, id);
+  if (!retryAlert) return json({ ok: true, order });
+
+  const alert = await notifyStaff(env, {
+    id: order.id,
+    ref: order.ref,
+    service: order.service,
+    serviceLabel: order.serviceLabel,
+    serviceDetail: order.serviceDetail,
+    itemCount: order.itemCount,
+    total: order.total
+  });
+  return json({ ok: true, order: await findOrder(env, id), alert });
 }

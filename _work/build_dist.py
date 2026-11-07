@@ -16,6 +16,15 @@ shutil.copy2(os.path.join(ROOT, "manifest.webmanifest"), os.path.join(DIST, "man
 shutil.copy2(os.path.join(ROOT, "sw.js"), os.path.join(DIST, "sw.js"))
 shutil.copytree(os.path.join(ROOT, "assets"), os.path.join(DIST, "assets"))
 
+STAFF = os.path.join(ROOT, "staff")
+if os.path.isdir(STAFF):
+    shutil.copytree(STAFF, os.path.join(DIST, "staff"))
+
+# Only /api/* is handled by Pages Functions. Everything else is served from
+# the static build, including /staff/ once it exists.
+with open(os.path.join(DIST, "_routes.json"), "w", encoding="utf-8", newline="\n") as fh:
+    fh.write('{\n  "version": 1,\n  "include": ["/api/*"],\n  "exclude": []\n}\n')
+
 # Cloudflare Pages headers. noindex keeps the review link out of search results
 # until the restaurant approves the site and a real domain is connected.
 with open(os.path.join(DIST, "_headers"), "w", encoding="utf-8", newline="\n") as fh:
@@ -37,6 +46,18 @@ with open(os.path.join(DIST, "_headers"), "w", encoding="utf-8", newline="\n") a
         "\n"
         "/assets/img/app/*\n"
         "  Cache-Control: public, max-age=604800\n"
+        "\n"
+        "/api/*\n"
+        "  Cache-Control: no-store\n"
+        "  X-Robots-Tag: noindex, nofollow\n"
+        "\n"
+        "/staff\n"
+        "  Cache-Control: no-cache\n"
+        "  X-Robots-Tag: noindex, nofollow\n"
+        "\n"
+        "/staff/*\n"
+        "  Cache-Control: no-cache\n"
+        "  X-Robots-Tag: noindex, nofollow\n"
     )
 
 files = []

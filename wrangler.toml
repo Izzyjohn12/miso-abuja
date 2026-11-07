@@ -1,0 +1,12 @@
+name = "miso-abuja"
+pages_build_output_dir = "dist"
+compatibility_date = "2025-09-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "miso-db"
+database_id = "74c3afe1-0479-46e4-a553-ab644d7c18a3"
+migrations_dir = "migrations"
+
+[vars]
+MENU_CACHE_SECONDS = "30"

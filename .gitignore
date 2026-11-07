@@ -1,0 +1,23 @@
+# dependencies
+node_modules/
+mobile/node_modules/
+
+# local builds, uploads and rollback images
+dist/
+MISO-website.zip
+_work/static-backup/
+_work/pages/
+_work/qa/
+_work/raw/
+_work/*.png
+_work/*.log
+vibe_images/
+.wrangler/
+
+# paused Expo shell (kept on disk, tracked separately)
+mobile/
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+*.local

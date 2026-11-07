@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="MISO monogram">
+  <rect width="96" height="96" rx="48" fill="#0b0a09"/>
+  <circle cx="48" cy="48" r="43.5" fill="none" stroke="#c8a267" stroke-width="1" opacity=".9"/>
+  <circle cx="48" cy="48" r="38" fill="none" stroke="#c8a267" stroke-width=".5" opacity=".35"/>
+  <path d="M24 63V34h5.2L48 52.4 66.8 34H72v29h-5.8V43.6L48 59 29.8 43.6V63Z" fill="#f4efe6"/>
+  <circle cx="75" cy="25" r="4.2" fill="#c8472f"/>
+</svg>

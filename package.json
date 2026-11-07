@@ -1,0 +1,17 @@
+{
+  "name": "miso-abuja",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "MISO Japanese & Thai Restaurant — guest storefront, order alerts and staff menu console",
+  "scripts": {
+    "build": "python _work/build_dist.py",
+    "dev": "wrangler pages dev dist",
+    "db:local": "wrangler d1 migrations apply miso-db --local",
+    "db:remote": "wrangler d1 migrations apply miso-db --remote",
+    "test:api": "node _work/test_api.mjs"
+  },
+  "dependencies": {
+    "@block65/webcrypto-web-push": "^2.0.0"
+  }
+}

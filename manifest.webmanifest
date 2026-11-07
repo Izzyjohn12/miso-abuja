@@ -1,0 +1,50 @@
+{
+  "id": "/",
+  "name": "MISO Japanese & Thai Restaurant",
+  "short_name": "MISO Abuja",
+  "description": "Sushi, tom yum and charcoal grill on a rooftop in Maitama, Abuja. Order for dine-in, pickup or delivery.",
+  "lang": "en-NG",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b0a09",
+  "theme_color": "#0b0a09",
+  "categories": ["food", "shopping"],
+  "icons": [
+    {
+      "src": "/assets/img/app/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/img/app/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/img/app/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Order from the menu",
+      "short_name": "Menu",
+      "description": "Browse sushi, Thai, grill and more",
+      "url": "/#menu",
+      "icons": [{ "src": "/assets/img/app/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Visit MISO",
+      "short_name": "Visit",
+      "description": "Address, hours and directions",
+      "url": "/#visit",
+      "icons": [{ "src": "/assets/img/app/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

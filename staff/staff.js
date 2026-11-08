@@ -65,7 +65,8 @@
     editingId: null,
     alerts: null,
     swPromise: null,
-    installPrompt: null
+    installPrompt: null,
+    installed: false
   };
 
   function $(selector, root) {
@@ -1408,10 +1409,77 @@
 
   /* ---------------------------------------------------------- install -- */
 
+  function isStandalone() {
+    return (window.matchMedia &&
+      window.matchMedia("(display-mode: standalone)").matches) ||
+      window.navigator.standalone === true;
+  }
+
+  function isIos() {
+    return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  }
+
+  function installCopy() {
+    if (state.installed || isStandalone()) {
+      return {
+        installed: true,
+        login: "MISO Staff is installed. Open it from the home screen.",
+        alert: "Running as the installed app. Push alerts work best here."
+      };
+    }
+    if (isIos()) {
+      return {
+        installed: false,
+        login: "On iPhone: tap Share, then Add to Home Screen. iOS 16.4+ only sends push to the installed app.",
+        alert: "Tap Share at the bottom of Safari, then Add to Home Screen. Open MISO Staff from the new icon before enabling alerts."
+      };
+    }
+    return {
+      installed: false,
+      login: "Install MISO Staff to open the queue full screen and keep alerts working.",
+      alert: "Use the install button, or open the browser menu and choose Install app."
+    };
+  }
+
   function syncInstallButtons() {
-    var show = Boolean(state.installPrompt);
+    var copy = installCopy();
+    var show = !copy.installed;
+
     $("#installButtonTop").hidden = !show;
-    $("#installButton").hidden = !show;
+    $("#loginInstallCard").hidden = !show;
+    $("#installQr").hidden = !show;
+    $("#loginInstallButton").hidden = !(show && state.installPrompt);
+    $("#installButton").hidden = !(show && state.installPrompt);
+    $("#loginInstallHint").textContent = copy.login;
+    $("#installHint").textContent = copy.alert;
+  }
+
+  function openInstallHelp() {
+    setTab("alerts", true);
+    var card = $("#installCard");
+    if (card && card.scrollIntoView) {
+      card.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  }
+
+  function install() {
+    if (!state.installPrompt) {
+      openInstallHelp();
+      return;
+    }
+
+    var prompt = state.installPrompt;
+    prompt.prompt();
+    prompt.userChoice.then(function (choice) {
+      if (choice && choice.outcome === "accepted") {
+        state.installPrompt = null;
+        toast("Installing MISO Staff\u2026");
+      }
+      syncInstallButtons();
+    }).catch(function () {
+      syncInstallButtons();
+    });
   }
 
   function initInstall() {
@@ -1422,46 +1490,17 @@
     });
 
     window.addEventListener("appinstalled", function () {
+      state.installed = true;
       state.installPrompt = null;
       syncInstallButtons();
       toast("MISO Staff installed");
     });
 
-    var install = function () {
-      if (!state.installPrompt) {
-        toast("Use your browser menu to install this page.");
-        return;
-      }
-      var prompt = state.installPrompt;
-      prompt.prompt();
-      prompt.userChoice.then(function (choice) {
-        if (choice && choice.outcome === "accepted") {
-          state.installPrompt = null;
-          toast("Installing MISO Staff\u2026");
-        }
-        syncInstallButtons();
-      }).catch(function () {
-        syncInstallButtons();
-      });
-    };
-
     $("#installButton").addEventListener("click", install);
+    $("#loginInstallButton").addEventListener("click", install);
     $("#installButtonTop").addEventListener("click", install);
 
-    var standalone = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
-      window.navigator.standalone === true;
-    var ios = /iphone|ipad|ipod/i.test(navigator.userAgent) ||
-      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-
-    var hint;
-    if (standalone) {
-      hint = "Running as an installed app. Push alerts work best here.";
-    } else if (ios) {
-      hint = "On iPhone: tap Share, then Add to Home Screen. iOS 16.4+ only sends push to the installed app.";
-    } else {
-      hint = "On Android or desktop Chrome, use the install button or the browser menu.";
-    }
-    $("#installHint").textContent = hint;
+    syncInstallButtons();
   }
 
   /* -------------------------------------------------- alarm + vibration -- */

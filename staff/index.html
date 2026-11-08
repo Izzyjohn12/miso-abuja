@@ -32,6 +32,14 @@
       <h1>Orders, live from the floor.</h1>
       <p class="login__lede">Enter the restaurant passcode to see new orders, move them through the kitchen, edit the menu and turn on phone alerts.</p>
 
+      <div class="install-prompt" id="loginInstallCard" hidden>
+        <div class="install-prompt__text">
+          <p class="eyebrow">Home screen app</p>
+          <p id="loginInstallHint"></p>
+        </div>
+        <button class="btn btn--ghost install-prompt__button" type="button" id="loginInstallButton" hidden>Install app</button>
+      </div>
+
       <form id="loginForm" novalidate>
         <label class="field" for="passcode">
           <span class="field__label">Staff passcode</span>
@@ -185,13 +193,17 @@
           </div>
         </article>
 
-        <article class="alert-card">
+        <article class="alert-card" id="installCard">
           <h3>Install the console</h3>
           <p>Add MISO Staff to the home screen so alerts open straight into the queue. On iPhone this is required for push.</p>
-          <div class="alert-card__actions">
-            <button class="btn" type="button" id="installButton" hidden>Install app</button>
+          <div class="install-card__body">
+            <img class="install-qr" id="installQr" src="../assets/img/app/staff-install-qr.svg"
+                 alt="QR code that opens the staff console" width="132" height="132" loading="lazy">
+            <div class="install-card__actions">
+              <button class="btn" type="button" id="installButton" hidden>Install app</button>
+              <p class="alert-card__meta" id="installHint"></p>
+            </div>
           </div>
-          <p class="alert-card__meta" id="installHint"></p>
         </article>
 
         <article class="alert-card alert-card--danger">

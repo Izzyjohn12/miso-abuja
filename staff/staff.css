@@ -147,6 +147,33 @@ a:hover {
   color: var(--muted);
 }
 
+.install-prompt {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0 0 22px;
+  padding: 13px 14px;
+  border: 1px solid rgba(200, 162, 103, 0.24);
+  border-radius: var(--radius);
+  background: rgba(200, 162, 103, 0.07);
+}
+
+.install-prompt__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.install-prompt__text p:not(.eyebrow) {
+  margin: 5px 0 0;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.install-prompt__button {
+  flex: none;
+}
+
 .field {
   display: block;
   margin-bottom: 18px;
@@ -1326,6 +1353,29 @@ body.has-sheet {
 
 .alert-card--danger {
   border-color: rgba(224, 90, 66, 0.24);
+}
+
+.install-card__body {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.install-card__actions {
+  flex: 1;
+  min-width: 150px;
+}
+
+.install-qr {
+  width: 132px;
+  height: 132px;
+  flex: none;
+  padding: 7px;
+  border: 1px solid rgba(200, 162, 103, 0.3);
+  border-radius: 10px;
+  background: var(--ivory);
 }
 
 /* -------------------------------------------------------- order alerts -- */

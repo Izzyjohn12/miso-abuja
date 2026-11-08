@@ -130,6 +130,9 @@ check("notice body has service, items and total",
 equal("notice deep-links to the queue", notice.url, "/staff/#orders");
 equal("notice tag is the order reference", notice.tag, "MISO-261107-0001");
 equal("notice requires interaction", notice.requireInteraction, true);
+equal("notice marks the order kind", notice.kind, "order");
+equal("notice carries the order id", notice.orderId, order.id);
+equal("notice carries the reference", notice.ref, order.ref);
 
 const singular = orderNotice({ ...order, itemCount: 1 });
 check("single item is not pluralised", singular.body.indexOf("1 item") !== -1, singular.body);

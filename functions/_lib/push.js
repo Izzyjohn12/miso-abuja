@@ -26,16 +26,20 @@ export function orderNotice(order) {
   }
 
   return {
+    kind: "order",
     title: "New MISO order \u2014 " + order.ref,
     body: bits.join(" \u00b7 "),
     tag: order.ref,
     url: "/staff/#orders",
+    orderId: order.id || null,
+    ref: order.ref,
     requireInteraction: true
   };
 }
 
 function testNotice() {
   return {
+    kind: "test",
     title: "MISO test alert",
     body: "Push alerts are working on this staff device.",
     tag: "miso-test",

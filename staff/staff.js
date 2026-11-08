@@ -7,6 +7,8 @@
   var POLL_MS = 15000;
   var SEEN_KEY = "miso-staff-seen-v1";
   var SOUND_KEY = "miso-staff-sound-v1";
+  var ALARM_CYCLE_MS = 6200;
+  var ALARM_VIBRATE = [800, 300, 800, 300, 800, 300, 1200];
   var TABS = ["orders", "menu", "alerts"];
   var TAB_TITLE = {
     orders: "Order queue",
@@ -52,6 +54,11 @@
     poll: null,
     loading: false,
     audio: null,
+    alarmBuffer: null,
+    alarmSource: null,
+    alarmGain: null,
+    alarmVibe: null,
+    ringing: false,
     tab: "orders",
     menu: null,
     menuLoading: false,
@@ -135,6 +142,7 @@
 
   function showLogin(message) {
     stopPolling();
+    stopAlarm();
     closeDishSheet();
     $("#appView").hidden = true;
     $("#loginView").hidden = false;
@@ -331,7 +339,6 @@
     writeSeen();
 
     if (state.primed && fresh.length) {
-      chime();
       toast(
         fresh.length === 1
           ? "New order \u2014 " + fresh[0].ref
@@ -345,6 +352,7 @@
     $("#updatedAt").textContent = "Updated " + TIME.format(new Date());
     updateBadge(newOrders.length);
     updateTabCount(newOrders.length);
+    syncAlarm(newOrders.length);
   }
 
   function updateTabCount(count) {
@@ -646,11 +654,25 @@
       syncSoundButton();
       if (state.sound) {
         unlockAudio();
-        chime();
+        if (state.ringing) startAlarmAudio();
+      } else {
+        stopAlarmAudio();
+      }
+    });
+
+    $("#alarmGo").addEventListener("click", function () {
+      setTab("orders", true);
+      var first = $(".order--new");
+      if (first && first.scrollIntoView) {
+        first.scrollIntoView({ block: "start", behavior: "smooth" });
       }
     });
 
     syncSoundButton();
+
+    document.addEventListener("click", function () {
+      if (state.sound) unlockAudio();
+    }, { passive: true });
 
     document.addEventListener("visibilitychange", function () {
       if (document.visibilityState === "visible" && !$("#appView").hidden) loadOrders(true);
@@ -1442,7 +1464,15 @@
     $("#installHint").textContent = hint;
   }
 
-  /* ------------------------------------------------------------ sound -- */
+  /* -------------------------------------------------- alarm + vibration -- */
+
+  function vibrate(pattern) {
+    try {
+      if (navigator.vibrate) navigator.vibrate(pattern);
+    } catch (err) {
+      /* unsupported or blocked */
+    }
+  }
 
   function unlockAudio() {
     if (!state.audio) {
@@ -1455,33 +1485,127 @@
       }
     }
     if (state.audio.state === "suspended") {
-      state.audio.resume().catch(function () {});
+      state.audio.resume().then(function () {
+        if (state.ringing && state.sound) startAlarmAudio();
+      }).catch(function () {});
     }
   }
 
-  function chime() {
-    if (!state.sound) return;
-    unlockAudio();
-    var ctx = state.audio;
-    if (!ctx) return;
+  /* A six-note chime with a long tail, looped with a short silence so the
+     console keeps ringing until a New order is acknowledged. */
+  function alarmBuffer(ctx) {
+    if (state.alarmBuffer) return state.alarmBuffer;
 
-    var now = ctx.currentTime;
-    [880, 1174.66].forEach(function (frequency, index) {
-      var oscillator = ctx.createOscillator();
-      var gain = ctx.createGain();
-      var at = now + index * 0.18;
+    var rate = ctx.sampleRate;
+    var buffer = ctx.createBuffer(2, Math.floor(rate * 6.2), rate);
+    var left = buffer.getChannelData(0);
+    var right = buffer.getChannelData(1);
 
-      oscillator.type = "sine";
-      oscillator.frequency.value = frequency;
-      gain.gain.setValueAtTime(0.0001, at);
-      gain.gain.exponentialRampToValueAtTime(0.16, at + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.34);
-
-      oscillator.connect(gain);
-      gain.connect(ctx.destination);
-      oscillator.start(at);
-      oscillator.stop(at + 0.36);
+    [
+      [0.00, 784.00, 0.34, 0.50],
+      [0.30, 987.77, 0.34, 0.52],
+      [0.60, 1174.66, 0.42, 0.56],
+      [0.98, 1567.98, 0.60, 0.62],
+      [1.95, 784.00, 0.34, 0.50],
+      [2.25, 987.77, 0.34, 0.52],
+      [2.55, 1174.66, 0.42, 0.56],
+      [2.93, 1567.98, 0.78, 0.62]
+    ].forEach(function (note) {
+      addTone(left, right, rate, note[0], note[1], note[2], note[3]);
     });
+
+    state.alarmBuffer = buffer;
+    return buffer;
+  }
+
+  function addTone(left, right, rate, start, frequency, duration, gain) {
+    var first = Math.floor(start * rate);
+    var total = Math.floor(duration * rate);
+    for (var i = 0; i < total && first + i < left.length; i += 1) {
+      var t = i / rate;
+      var attack = Math.min(1, t / 0.012);
+      var decay = Math.pow(1 - t / duration, 1.6);
+      var wave =
+        Math.sin(2 * Math.PI * frequency * t) * 0.82 +
+        Math.sin(2 * Math.PI * frequency * 2 * t) * 0.18;
+      var value = wave * attack * decay * gain;
+      left[first + i] += value;
+      right[first + i] += value * 0.94;
+    }
+  }
+
+  function startAlarmAudio() {
+    if (!state.sound || state.alarmSource) return;
+    unlockAudio();
+
+    var ctx = state.audio;
+    if (!ctx || ctx.state !== "running") return;
+
+    var source = ctx.createBufferSource();
+    source.buffer = alarmBuffer(ctx);
+    source.loop = true;
+
+    var gain = ctx.createGain();
+    gain.gain.value = 0.72;
+    source.connect(gain);
+    gain.connect(ctx.destination);
+
+    try {
+      source.start(0);
+    } catch (err) {
+      return;
+    }
+    state.alarmSource = source;
+    state.alarmGain = gain;
+  }
+
+  function stopAlarmAudio() {
+    if (state.alarmSource) {
+      try { state.alarmSource.stop(); } catch (err) { /* already stopped */ }
+      try { state.alarmSource.disconnect(); } catch (err) { /* ignore */ }
+      state.alarmSource = null;
+    }
+    if (state.alarmGain) {
+      try { state.alarmGain.disconnect(); } catch (err) { /* ignore */ }
+      state.alarmGain = null;
+    }
+  }
+
+  function startAlarm(count) {
+    var first = !state.ringing;
+    state.ringing = true;
+
+    document.body.classList.add("is-ringing");
+    $("#alarmBanner").hidden = false;
+    $("#alarmText").textContent =
+      count === 1 ? "New order ringing" : count + " new orders ringing";
+
+    if (!first) return;
+
+    startAlarmAudio();
+    vibrate(ALARM_VIBRATE);
+    state.alarmVibe = window.setInterval(function () {
+      if (state.ringing) vibrate(ALARM_VIBRATE);
+    }, ALARM_CYCLE_MS);
+  }
+
+  function stopAlarm() {
+    if (!state.ringing && !state.alarmSource) return;
+
+    state.ringing = false;
+    stopAlarmAudio();
+    if (state.alarmVibe) {
+      window.clearInterval(state.alarmVibe);
+      state.alarmVibe = null;
+    }
+    vibrate(0);
+    document.body.classList.remove("is-ringing");
+    $("#alarmBanner").hidden = true;
+  }
+
+  function syncAlarm(count) {
+    if (count > 0) startAlarm(count);
+    else stopAlarm();
   }
 
   function syncSoundButton() {
@@ -1512,5 +1636,6 @@
   initQueue();
   initMenu();
   initAlerts();
+  registerServiceWorker();
   initInstall();
 })();

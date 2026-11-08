@@ -106,7 +106,11 @@ def main():
         })"""))
 
         out["apiCached"] = cdp.js("caches.match('/api/menu').then(hit => Boolean(hit))")
-        out["staffCached"] = cdp.js("caches.match('/staff/').then(hit => Boolean(hit))")
+        out["staffShellCached"] = cdp.js("caches.match('/staff/').then(hit => Boolean(hit))")
+        out["staffScriptCached"] = cdp.js("caches.match('/staff/staff.js').then(hit => Boolean(hit))")
+        out["staffCacheNames"] = json.loads(cdp.js("""caches.keys().then(function (keys) {
+          return JSON.stringify(keys.filter(function (key) { return key.indexOf('miso-staff-') === 0; }));
+        })"""))
 
         out["apiFetch"] = json.loads(cdp.js("""fetch('/api/menu', {cache: 'no-store'})
           .then(async (r) => JSON.stringify({status: r.status, type: r.headers.get('content-type'),
@@ -116,12 +120,19 @@ def main():
         out["staffFetch"] = json.loads(cdp.js("""fetch('/staff/', {cache: 'no-store'})
           .then(async (r) => JSON.stringify({status: r.status,
             ok: (await r.text()).includes('Staff console')}))"""))
-        out["staffCachedAfterFetch"] = cdp.js("caches.match('/staff/').then(hit => Boolean(hit))")
+        out["staffShellCachedAfterFetch"] = cdp.js("caches.match('/staff/').then(hit => Boolean(hit))")
+        out["staffApiNeverCached"] = cdp.js(
+            "caches.match('/api/orders').then(hit => Boolean(hit))"
+        )
 
         print(json.dumps(out, indent=2, ensure_ascii=False))
     finally:
         proc.terminate()
-        proc.wait(timeout=20)
+        try:
+            proc.wait(timeout=20)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=20)
 
 
 if __name__ == "__main__":

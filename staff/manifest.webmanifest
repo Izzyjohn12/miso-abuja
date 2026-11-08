@@ -8,9 +8,12 @@
   "start_url": "/staff/",
   "scope": "/staff/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "launch_handler": { "client_mode": "focus-existing" },
   "background_color": "#0b0a09",
   "theme_color": "#0b0a09",
   "categories": ["business", "food"],
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/assets/img/app/icon-192.png",
@@ -29,6 +32,22 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/assets/img/app/staff-menu.png",
+      "sizes": "500x805",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Edit dishes and prices from the phone"
+    },
+    {
+      "src": "/assets/img/app/staff-alerts.png",
+      "sizes": "500x805",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Turn on phone alerts and check the kitchen devices"
     }
   ],
   "shortcuts": [

@@ -2,7 +2,24 @@
  * Run against `wrangler pages dev` with the Phase 3 code. */
 
 import { readFileSync } from "node:fs";
+import vm from "node:vm";
 import { webcrypto as crypto } from "node:crypto";
+
+const STATIC_MENU = (() => {
+  const sandbox = { window: {} };
+  vm.runInNewContext(
+    readFileSync(new URL("../assets/js/menu.js", import.meta.url), "utf8"),
+    sandbox,
+    { filename: "menu.js" }
+  );
+  return sandbox.window.MISO_MENU;
+})();
+const STATIC_ITEM_COUNT = STATIC_MENU.reduce(
+  (total, category) =>
+    total + category.groups.reduce((count, group) => count + group.items.length, 0),
+  0
+);
+const STATIC_CATEGORY_COUNT = STATIC_MENU.length;
 
 const BASE = process.env.MISO_TEST_BASE || "http://127.0.0.1:8788";
 
@@ -99,7 +116,8 @@ async function main() {
   let res = await call("/api/health");
   equal("health is public and 200", res.status, 200);
   equal("health reports the database", res.data.db, "ok");
-  check("health reports the item count", Number(res.data.items) >= 114, "items " + res.data.items);
+  check("health reports the item count", Number(res.data.items) >= STATIC_ITEM_COUNT,
+    "items " + res.data.items + ", expected at least " + STATIC_ITEM_COUNT);
 
   /* ----------------------------------------------------- unauthorised -- */
   res = await call("/api/menu/items");
@@ -165,10 +183,10 @@ async function main() {
 
   res = await call("/api/menu/items", { headers: { Cookie: cookie } });
   equal("staff menu list is 200", res.status, 200);
-  check("staff menu returns all 114 dishes", Number(res.data.itemCount) === 114,
-    "itemCount " + res.data.itemCount);
-  check("staff menu has 6 categories", (res.data.categories || []).length === 6,
-    "categories " + (res.data.categories || []).length);
+  check("staff menu returns every menu item", Number(res.data.itemCount) === STATIC_ITEM_COUNT,
+    "itemCount " + res.data.itemCount + ", expected " + STATIC_ITEM_COUNT);
+  check("staff menu returns every category", (res.data.categories || []).length === STATIC_CATEGORY_COUNT,
+    "categories " + (res.data.categories || []).length + ", expected " + STATIC_CATEGORY_COUNT);
 
   const allItems = [];
   for (const category of res.data.categories || []) {

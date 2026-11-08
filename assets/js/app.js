@@ -49,7 +49,10 @@
     thai: { dir: "assets/img/menu/thai", alt: "Tom yum seafood soup with prawns, lemongrass and chilli" },
     grill: { dir: "assets/img/menu/grill", alt: "Suya skewers grilled over charcoal and dusted with yaji spice" },
     pasta: { dir: "assets/img/menu/pasta", alt: "Seafood pasta with prawns and calamari in a cream sauce" },
-    indian: { dir: "assets/img/menu/indian", alt: "Chicken biryani with butter chicken and naan" }
+    indian: { dir: "assets/img/menu/indian", alt: "Chicken biryani with butter chicken and naan" },
+    drinks: { dir: "assets/img/menu/drinks", alt: "Cocktails, a mojito and a whiskey sour on a dark bar top" },
+    spirits: { dir: "assets/img/menu/spirits", alt: "Whisky glasses and bottles on a dark back bar" },
+    wine: { dir: "assets/img/menu/wine", alt: "Red and white wine with a bottle on a dark table" }
   };
 
   function dishImage(key) {
@@ -356,7 +359,7 @@
         '" target="_blank" rel="noopener">' + svgIcon("i-whatsapp") + "Ask on WhatsApp</a>" +
       "</div>");
 
-    $("#menuStatus").textContent = total + " dishes · " + MENU.length + " sections · prices in naira";
+    $("#menuStatus").textContent = total + " dishes & drinks · " + MENU.length + " sections · prices in naira";
   }
 
   function pad2(n) {
@@ -409,9 +412,9 @@
       var bits = [];
       if (query) bits.push('"' + query + '"');
       if (filter !== "all") bits.push(TAG_LABELS[filter].toLowerCase());
-      status.textContent = matches + (matches === 1 ? " dish matches " : " dishes match ") + bits.join(" + ");
+      status.textContent = matches + (matches === 1 ? " item matches " : " items match ") + bits.join(" + ");
     } else {
-      status.textContent = Object.keys(ITEMS).length + " dishes · " + MENU.length + " sections · prices in naira";
+      status.textContent = Object.keys(ITEMS).length + " dishes & drinks · " + MENU.length + " sections · prices in naira";
     }
   }
 

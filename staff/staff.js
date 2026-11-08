@@ -826,7 +826,7 @@
       shown += categoryCount;
       hiddenShown += categoryHidden;
 
-      var meta = categoryCount + (categoryCount === 1 ? " dish" : " dishes");
+      var meta = categoryCount + (categoryCount === 1 ? " item" : " items");
       if (categoryHidden) meta += " \u00b7 " + categoryHidden + " hidden";
 
       categoriesHtml +=
@@ -849,7 +849,7 @@
     } else {
       var total = Number(state.menu.itemCount) || 0;
       var hidden = Number(state.menu.hiddenCount) || 0;
-      $("#menuTotal").textContent = total + (total === 1 ? " dish" : " dishes") +
+      $("#menuTotal").textContent = total + (total === 1 ? " item" : " items") +
         (hidden ? " \u00b7 " + hidden + " hidden" : "");
     }
   }
@@ -897,11 +897,11 @@
           return;
         }
         if (!result.ok) {
-          toast("Couldn't update that dish. Try again.", true);
+          toast("Couldn't update that item. Try again.", true);
           loadMenu(true);
           return;
         }
-        toast(hidden ? "Dish hidden from the guest menu" : "Dish is back on the guest menu");
+        toast(hidden ? "Item hidden from the guest menu" : "Item is back on the guest menu");
         loadMenu(true);
       })
       .catch(function () {
@@ -978,8 +978,8 @@
 
     state.editingId = item ? item.id : null;
 
-    $("#dishSheetKicker").textContent = item ? "Edit dish" : "New dish";
-    $("#dishSheetTitle").textContent = item ? item.name : "Add a dish";
+    $("#dishSheetKicker").textContent = item ? "Edit item" : "New item";
+    $("#dishSheetTitle").textContent = item ? item.name : "Add an item";
     $("#dishId").value = item ? item.id : "";
     $("#dishName").value = item ? item.name : "";
 
@@ -1014,7 +1014,7 @@
   function menuErrorMessage(error) {
     switch (error) {
       case "name_required":
-        return "Give the dish a name.";
+        return "Give the item a name.";
       case "bad_group":
         return "That category group is no longer available. Refresh the menu and try again.";
       case "bad_price":
@@ -1022,11 +1022,11 @@
       case "bad_tags":
         return "One of those tags is not recognised.";
       case "not_found":
-        return "That dish no longer exists. Refresh the menu.";
+        return "That item no longer exists. Refresh the menu.";
       case "nothing_to_update":
         return "Change something before saving.";
       default:
-        return "Couldn't save the dish. Check the details and try again.";
+        return "Couldn't save the item. Check the details and try again.";
     }
   }
 
@@ -1041,7 +1041,7 @@
     var price = null;
 
     if (name.length < 2) {
-      dishError("Give the dish a name.");
+      dishError("Give the item a name.");
       return;
     }
     if (!groupId) {
@@ -1084,7 +1084,7 @@
     request(path, { method: editing ? "PATCH" : "POST", body: payload })
       .then(function (result) {
         button.disabled = false;
-        button.textContent = "Save dish";
+        button.textContent = "Save item";
 
         if (result.status === 401) {
           closeDishSheet();
@@ -1097,12 +1097,12 @@
         }
 
         closeDishSheet();
-        toast(editing ? "Dish updated" : "Dish added to the menu");
+        toast(editing ? "Item updated" : "Item added to the menu");
         loadMenu(true);
       })
       .catch(function () {
         button.disabled = false;
-        button.textContent = "Save dish";
+        button.textContent = "Save item";
         dishError("Couldn't reach the server. Try again.");
       });
   }

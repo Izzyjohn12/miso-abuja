@@ -135,16 +135,16 @@
         <header class="section-head">
           <div>
             <p class="eyebrow">Menu</p>
-            <h2>Dishes &amp; prices</h2>
-            <p class="section-lede">Changes go live for guests on their next visit. Hiding keeps the dish in past orders.</p>
+            <h2>Dishes, drinks &amp; prices</h2>
+            <p class="section-lede">Changes go live for guests on their next visit. Hiding keeps the item in past orders.</p>
           </div>
-          <button class="btn" type="button" id="addDishButton">Add dish</button>
+          <button class="btn" type="button" id="addDishButton">Add item</button>
         </header>
 
         <div class="menu-toolbar">
           <label class="search" for="menuSearch">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4a6 6 0 1 0 3.7 10.7l4.8 4.8 1.4-1.4-4.8-4.8A6 6 0 0 0 10 4zm0 2a4 4 0 1 1 0 8 4 4 0 0 1 0-8z"/></svg>
-            <input type="search" id="menuSearch" placeholder="Search dishes, groups or categories" autocomplete="off">
+            <input type="search" id="menuSearch" placeholder="Search dishes, drinks, groups or categories" autocomplete="off">
           </label>
           <p class="menu-total" id="menuTotal">Loading menu…</p>
         </div>
@@ -154,8 +154,8 @@
 
         <div class="empty" id="menuEmpty" hidden>
           <p class="eyebrow">Nothing found</p>
-          <h2>No dishes match</h2>
-          <p>Try a different word, or add the dish as new.</p>
+          <h2>No items match</h2>
+          <p>Try a different word, or add the item as new.</p>
         </div>
       </section>
 
@@ -221,8 +221,8 @@
       <section class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="dishSheetTitle">
         <header class="sheet__head">
           <div>
-            <p class="eyebrow" id="dishSheetKicker">New dish</p>
-            <h2 id="dishSheetTitle">Add a dish</h2>
+            <p class="eyebrow" id="dishSheetKicker">New item</p>
+            <h2 id="dishSheetTitle">Add an item</h2>
           </div>
           <button class="icon-btn" type="button" data-close-sheet aria-label="Close">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19l5.6-5.6 5.6 5.6 1.4-1.4-5.6-5.6 5.6-5.6L17.6 5 12 10.6z"/></svg>
@@ -233,7 +233,7 @@
           <input type="hidden" id="dishId">
 
           <label class="field" for="dishName">
-            <span class="field__label">Dish name</span>
+            <span class="field__label">Item name</span>
             <input type="text" id="dishName" maxlength="80" autocomplete="off" required>
           </label>
 
@@ -255,7 +255,7 @@
 
           <label class="field" for="dishDescription">
             <span class="field__label">Description</span>
-            <textarea id="dishDescription" rows="3" maxlength="500" placeholder="What the guest reads under the dish name"></textarea>
+            <textarea id="dishDescription" rows="3" maxlength="500" placeholder="What the guest reads under the item name"></textarea>
           </label>
 
           <fieldset class="field">
@@ -271,7 +271,7 @@
 
           <div class="sheet__actions">
             <button class="btn btn--ghost" type="button" data-close-sheet>Cancel</button>
-            <button class="btn" type="submit" id="dishSave">Save dish</button>
+            <button class="btn" type="submit" id="dishSave">Save item</button>
           </div>
         </form>
       </section>

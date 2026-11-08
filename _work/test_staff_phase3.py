@@ -173,7 +173,7 @@ def main():
         # ---------------------------------------------------------- menu --
         cdp.js("document.querySelector('.tab[data-tab=menu]').click()")
         out["menuVisible"] = cdp.wait_for(
-            "!document.getElementById('viewMenu').hidden && document.querySelectorAll('.menu-cat').length === 6",
+            "!document.getElementById('viewMenu').hidden && document.querySelectorAll('.menu-cat').length === 9",
             25,
         )
         out["menuHeader"] = json.loads(cdp.js("""JSON.stringify({

@@ -25,8 +25,8 @@ if os.path.isdir(STAFF):
 with open(os.path.join(DIST, "_routes.json"), "w", encoding="utf-8", newline="\n") as fh:
     fh.write('{\n  "version": 1,\n  "include": ["/api/*"],\n  "exclude": []\n}\n')
 
-# Cloudflare Pages headers. noindex keeps the review link out of search results
-# until the restaurant approves the site and a real domain is connected.
+# Cloudflare Pages headers. The guest site is indexable now that the
+# restaurant approved it; the staff console and API stay out of search.
 with open(os.path.join(DIST, "_headers"), "w", encoding="utf-8", newline="\n") as fh:
     fh.write(
         "/*\n"
@@ -34,7 +34,6 @@ with open(os.path.join(DIST, "_headers"), "w", encoding="utf-8", newline="\n") a
         "  Referrer-Policy: strict-origin-when-cross-origin\n"
         "  X-Frame-Options: SAMEORIGIN\n"
         "  Permissions-Policy: geolocation=(), microphone=(), camera=()\n"
-        "  X-Robots-Tag: noindex, nofollow\n"
         "\n"
         "/manifest.webmanifest\n"
         "  Content-Type: application/manifest+json\n"

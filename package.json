@@ -11,7 +11,8 @@
     "db:remote": "wrangler d1 migrations apply miso-db --remote",
     "test:api": "node _work/test_api.mjs",
     "test:phase3": "node _work/test_phase3_api.mjs",
-    "test:push": "node _work/test_push.mjs"
+    "test:push": "node _work/test_push.mjs",
+    "test:prod": "python _work/test_prod_smoke.py"
   },
   "dependencies": {
     "@block65/webcrypto-web-push": "^2.0.0"
